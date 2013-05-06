@@ -38,7 +38,7 @@
 # Note: when buildver reaches 3 digits, drop a zero from the priority so
 # that the priority number remains 6 digits
 %define priority        1700%{buildver}
-%define tzupdate        1
+%define tzupdate        0
 %define jpp_epoch       1
 
 # TODO: Think about using conditionals for version variants.
@@ -85,15 +85,22 @@
 # don't matter because this isn't a multilib-capable package.
 %define __jar_repack 0
 
+# Convert an absolute path to a relative path.  Each symbolic link is
+# specified relative to the directory in which it is installed so that
+# it will resolve properly within chrooted installations.
+%define script 'use File::Spec; print File::Spec->abs2rel($ARGV[0], $ARGV[1])'
+%define abs2rel %{__perl} -e %{script}
+
+
 Name:           java-%{javaver}-%{origin}
 Version:        %{javaver}.%{buildver}
-Release:        1.0.cf
+Release:        3.0
 Summary:        Oracle Java Runtime Environment
 License:        Oracle Corporation Binary Code License
 Group:          Development/Languages
 URL:            http://download.oracle.com/javase/7/docs/
 Source0:        jdk-%{cvsversion}-linux-%{target_cpu}.tar.gz
-NoSource:       0
+#NoSource:       0
 %if %{tzupdate}
 Source100:      tzupdater-%{tzversion}.zip
 NoSource:       100
@@ -118,6 +125,12 @@ Provides:       jce = %{jpp_epoch}:%{version}
 Provides:       jdbc-stdext = %{jpp_epoch}:3.0, jdbc-stdext = %{jpp_epoch}:%{version}
 Provides:       java-sasl = %{jpp_epoch}:%{version}
 Provides:       java-fonts = %{jpp_epoch}:%{javaver}, java-%{javaver}-fonts
+
+# Require /etc/pki/java/cacerts.
+Requires: ca-certificates
+# Require zoneinfo data provided by tzdata-java subpackage.
+Requires: tzdata-java
+
 
 %description
 The Java Runtime Environment (JRE) contains the software and tools
@@ -354,6 +367,22 @@ done
 
 # make placeholder directory for plugin
 mkdir -p $RPM_BUILD_ROOT%{_libdir}/mozilla/plugins
+
+# Install cacerts symlink.
+rm -f $RPM_BUILD_ROOT%{_jvmdir}/%{jredir}/lib/security/cacerts
+pushd $RPM_BUILD_ROOT%{_jvmdir}/%{jredir}/lib/security
+  RELATIVE=$(%{abs2rel} %{_sysconfdir}/pki/java \
+  %{_jvmdir}/%{jredir}/lib/security)
+  ln -sf $RELATIVE/cacerts .
+popd
+
+# Replace the zoneinfo subdir with a link to /usr/share/javazi
+rm -rf $RPM_BUILD_ROOT%{_jvmdir}/%{jredir}/lib/zi
+pushd $RPM_BUILD_ROOT%{_jvmdir}/%{jredir}/lib
+  RELATIVE=$(%{abs2rel} %{_datadir} \
+  %{_jvmdir}/%{jredir}/lib)
+  ln -sf $RELATIVE/zi .
+popd
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -684,7 +713,7 @@ fi
 %{_jvmdir}/%{jredir}/lib/zi/
 %dir %{_jvmdir}/%{jredir}/lib/security/
 %config(noreplace) %{_jvmdir}/%{jredir}/lib/security/blacklist
-%config(noreplace) %{_jvmdir}/%{jredir}/lib/security/cacerts
+%{_jvmdir}/%{jredir}/lib/security/cacerts
 %config(noreplace) %{_jvmdir}/%{jredir}/lib/security/java.policy
 %config(noreplace) %{_jvmdir}/%{jredir}/lib/security/java.security
 %config(noreplace) %{_jvmdir}/%{jredir}/lib/security/javafx.policy
@@ -789,6 +818,12 @@ fi
 %{_jvmdir}/%{jredir}/lib/jfxrt.jar
 
 %changelog
+* Mon May 06 2013 julien.tognazzi@swissinfo.ch 1.7.0.21-3.0
+- Linked to zoneinfo dir to tzdata-java one
+
+* Thu May 02 2013 julien.tognazzi@swissinfo.ch 1.7.0.21-2.0
+- cacerts Symlink to /etc/pki/java/cacerts
+
 * Wed Apr 17 2013 Paul Howarth <paul@city-fan.org> - 1:1.7.0.21-1.0.cf
 - update to 1.7.0.21 (new features and security fixes; see release notes at
   http://www.oracle.com/technetwork/java/javase/7u21-relnotes-1932873.html)
